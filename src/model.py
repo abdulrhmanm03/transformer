@@ -84,18 +84,21 @@ class MultiHeadAttentionBlock(nn.Module):
         key: torch.Tensor,
         value: torch.Tensor,
         dropout: nn.Dropout,
+        mask,
     ):
         d_k = query.shape[-1]
 
-        attention_score = torch.softmax(
-            (query @ key.transpose(-2, -1)) / math.sqrt(d_k), dim=-1
-        )
+        attention_score = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
+        if mask is not None:
+            attention_score.masked_fill_(mask == 0, -1e9)
+        attention_score = attention_score.softmax(dim=-1)
+
         if dropout is not None:
             attention_score = dropout(attention_score)
 
         return attention_score @ value
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask):
         query = self.w_q(q)
         key = self.w_k(k)
         value = self.w_v(v)
@@ -108,7 +111,7 @@ class MultiHeadAttentionBlock(nn.Module):
             1, 2
         )
 
-        x = MultiHeadAttentionBlock.attention(query, key, value, self.dropout)
+        x = MultiHeadAttentionBlock.attention(query, key, value, self.dropout, mask)
 
         x = x.transpose(1, 2).contiguous().view(x.shape[0], -1, self.h * self.d_k)
 
@@ -123,3 +126,37 @@ class ResidualConnection(nn.Module):
 
     def forword(self, x, sublayer):
         return x + self.dropout(self.norm(sublayer(x)))
+
+
+class EnconderBlock(nn.Module):
+    def __init__(
+        self,
+        self_attention_block: MultiHeadAttentionBlock,
+        feed_forward_block: FeedForwardBlock,
+        dropout: float,
+    ) -> None:
+        super().__init__()
+        self.self_attention_block = self_attention_block
+        self.feed_forward_block = feed_forward_block
+        self.residual_connections = nn.ModuleList(
+            [ResidualConnection(dropout) for _ in range(2)]
+        )
+
+    def forward(self, x: torch.Tensor, mask):
+        x = self.residual_connections[0](
+            x, lambda x: self.self_attention_block(x, x, x, mask)
+        )
+        x = self.residual_connections[1](x, self.feed_forward_block)
+        return x
+
+
+class Encoder(nn.Module):
+    def __init__(self, layers: nn.ModuleList) -> None:
+        super().__init__()
+        self.layers = layers
+        self.norm = LayerNormalization()
+
+    def forward(self, x, mask):
+        for layer in self.layers:
+            x = layer(x, mask)
+        return self.norm(x)
