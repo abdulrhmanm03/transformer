@@ -11,7 +11,7 @@ class InputModel(nn.Module):
         self.vocab_size = vocab_size
         self.embedding = nn.Embedding(vocab_size, d_model)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.embedding(x) * math.sqrt(self.d_model)
 
 
@@ -35,7 +35,7 @@ class PositionalEncoding(nn.Module):
 
         self.register_buffer("pe", pe)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         x = x + (self.pe[:, : x.shape[1], :]).requires_grad_(False)
         return self.dropout(x)
 
@@ -47,7 +47,7 @@ class LayerNormalization(nn.Module):
         self.alpha = nn.Parameter(torch.ones(1))
         self.bias = nn.Parameter(torch.zeros(1))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         mean = x.mean(dim=-1, keepdim=True)
         std = x.std(dim=-1, keepdim=True)
         return self.alpha * (x - mean) / (std + self.eps) + self.bias
@@ -60,7 +60,7 @@ class FeedForwardBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear_2 = nn.Linear(d_ff, d_model)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         return self.linear_2(self.dropout(torch.relu(self.linear_1(x))))
 
 
@@ -84,7 +84,7 @@ class MultiHeadAttentionBlock(nn.Module):
         key: torch.Tensor,
         value: torch.Tensor,
         dropout: nn.Dropout,
-        mask,
+        mask: torch.Tensor,
     ):
         d_k = query.shape[-1]
 
@@ -98,7 +98,9 @@ class MultiHeadAttentionBlock(nn.Module):
 
         return attention_score @ value
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask):
+    def forward(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor
+    ):
         query = self.w_q(q)
         key = self.w_k(k)
         value = self.w_v(v)
@@ -124,7 +126,7 @@ class ResidualConnection(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.norm = LayerNormalization()
 
-    def forword(self, x, sublayer):
+    def forword(self, x: torch.Tensor, sublayer):
         return x + self.dropout(self.norm(sublayer(x)))
 
 
@@ -142,7 +144,7 @@ class EncoderBlock(nn.Module):
             [ResidualConnection(dropout) for _ in range(2)]
         )
 
-    def forward(self, x: torch.Tensor, mask):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor):
         x = self.residual_connections[0](
             x, lambda x: self.self_attention_block(x, x, x, mask)
         )
@@ -156,7 +158,7 @@ class Encoder(nn.Module):
         self.layers = layers
         self.norm = LayerNormalization()
 
-    def forward(self, x, mask):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor):
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
@@ -179,7 +181,11 @@ class DecoderBlock(nn.Module):
         )
 
     def forward(
-        self, x: torch.Tensor, encoder_output: torch.Tensor, src_mask, trg_mask
+        self,
+        x: torch.Tensor,
+        encoder_output: torch.Tensor,
+        src_mask: torch.Tensor,
+        trg_mask: torch.Tensor,
     ):
         x = self.residual_connections[0](
             x,
@@ -202,7 +208,11 @@ class Decoder(nn.Module):
         self.norm = LayerNormalization()
 
     def forward(
-        self, x: torch.Tensor, encoder_output: torch.Tensor, src_mask, trg_mask
+        self,
+        x: torch.Tensor,
+        encoder_output: torch.Tensor,
+        src_mask: torch.Tensor,
+        trg_mask: torch.Tensor,
     ):
         for layer in self.layers:
             x = layer(x, encoder_output, src_mask, trg_mask)
