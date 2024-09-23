@@ -2,7 +2,6 @@ import math
 
 import torch
 import torch.nn as nn
-from torch.nn.modules import transformer
 
 
 class InputEmbeddings(nn.Module):
